@@ -1,1 +1,9 @@
 /target
+
+# Idea project files
+/.idea
+/rv64_emu.iml
+
+# Binary files
+foo
+foo.bin
