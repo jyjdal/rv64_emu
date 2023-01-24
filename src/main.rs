@@ -1,3 +1,5 @@
+extern crate core;
+
 mod bus;
 mod cpu;
 mod dram;
@@ -7,6 +9,7 @@ mod register;
 use std::{env, io};
 use std::fs::File;
 use std::io::Read;
+use crate::bus::DRAM_BASE;
 
 use crate::cpu::*;
 
@@ -22,6 +25,7 @@ fn main() -> io::Result<()> {
     let mut file = File::open(&args[1])?;
     let mut code = Vec::new();
     file.read_to_end(&mut code)?;
+    let len = code.clone().len() as u64;
 
     let mut cpu = Cpu::new(code);
 
@@ -45,8 +49,7 @@ fn main() -> io::Result<()> {
         }
 
         // This is a workaround for avoiding an infinite loop.
-        // TODO avoid counting pc manually
-        if cpu.pc == 0 || cpu.pc - 0x8000_0000 >= 12 {
+        if (cpu.pc - DRAM_BASE) >= len {
             break;
         }
     }

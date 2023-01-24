@@ -29,6 +29,8 @@ pub enum Instruction {
 
     Ecall,
     Ebreak,
+
+    Add { rd: Register, rs1: Register, rs2: Register },
 }
 
 // Instruction type, see specification chapter 27: RV32/64G Instruction Set Listings
@@ -51,8 +53,6 @@ pub enum InstType {
 impl InstType {
     // Decode instruction with known instruction type
     pub fn decode(&self, inst: u32) -> Instruction {
-        let opcode = inst & 0b1111111;
-
         match self {
             InstType::I => {
                 return InstType::decode_type_i(inst);
@@ -139,7 +139,22 @@ impl InstType {
     }
 
     fn decode_type_r(inst: u32) -> Instruction {
-        unimplemented!()
+        // Get opcode
+        let opcode = inst & 0b1111111;
+
+        // Decode base type fields
+        let func7 = (inst >> 25) & 0b111_1111;
+        let rs2 = (((inst >> 20) & 0b11111) as usize).into();
+        let rs1: Register = (((inst >> 15) & 0b1111_1) as usize).into();
+        let func3 = (inst >> 12) & 0b111;
+        let rd: Register = (((inst >> 7) & 0b1111_1) as usize).into();
+
+        return match opcode {
+            0b0110011 => {
+                Instruction::Add { rd, rs1, rs2 }
+            }
+            _ => Instruction::Undefined
+        };
     }
 
     fn decode_type_u(inst: u32) -> Instruction {
@@ -147,24 +162,15 @@ impl InstType {
     }
 }
 
-#[test]
-fn test() {
-    // Instruction 0x00000013 is Addi { rd: X0, rs1: X0, imm: 0 }.
-    decode(0x000000e7);
-    panic!("Failed")
-}
-
 // Decode a 32-bit instruction to enum Instruction
-fn decode(inst: u32) {
+pub fn decode(inst: u32) -> Instruction {
     let opcode = inst & 0b1111111;
 
-    let decoded = if let Some(typ) = &OPCODE_TYPE[opcode as usize] {
+    if let Some(typ) = &OPCODE_TYPE[opcode as usize] {
         typ.decode(inst)
     } else {
         Instruction::Undefined
-    };
-
-    println!("Instruction {:#010x} is {:?}.\n", inst, decoded);
+    }
 }
 
 // Map instruction opcode to its instruction type

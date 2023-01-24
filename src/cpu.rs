@@ -1,3 +1,4 @@
+use crate::instruction::{decode, Instruction};
 use crate::bus::*;
 use crate::dram::*;
 
@@ -22,8 +23,6 @@ impl Cpu {
     }
 
     // Dump register values
-    // TODO figure out register names
-    // TODO figure out rust format
     pub fn dump_registers(&self) {
         let mut output = String::from("");
         let abi = [
@@ -66,39 +65,48 @@ impl Cpu {
     }
 
     // Get an instruction
-    pub fn fetch(&mut self) -> Result<u64, ()> {
+    pub fn fetch(&mut self) -> Result<u32, ()> {
         match self.bus.load(self.pc, 32) {
-            Ok(inst) => Ok(inst),
+            Ok(inst) => {
+                let inst = inst as u32;
+                Ok(inst)
+            }
             Err(_) => Err(())
         }
     }
 
     // Execute an instruction
-    // TODO need more instructions
-    pub fn execute(&mut self, inst: u64) -> Result<(), ()> {
-        let opcode = inst & 0x7f;
-        let rd = ((inst >> 7) & 0x1f) as usize;
-        let rs1 = ((inst >> 15) & 0x1f) as usize;
-        let rs2 = ((inst >> 20) & 0x1f) as usize;
-        let _func3 = (inst >> 12) & 0x7;
-        let _func7 = (inst >> 25) & 0x7f;
+    pub fn execute(&mut self, inst: u32) -> Result<(), ()> {
+        let instruction = decode(inst);
 
-        // x0 is hardwired as 0
-        self.regs[0] = 0;
-
-        // execute instruction
-        match opcode {
-            0x13 => {
-                // Addi
-                let imm = ((inst & 0xfff0_0000) as i64 >> 20) as u64;
-                self.regs[rd] = self.regs[rs1].wrapping_add(imm);
+        match instruction {
+            Instruction::Addi { rd, rs1, imm } => {
+                let rd: usize = rd.into();
+                let rs1: usize = rs1.into();
+                self.regs[rd] = self.regs[rs1].wrapping_add(imm as u64);
             }
-            0x33 => {
-                // Add
+            Instruction::Slli { rd, rs1, shamt } => {
+                let rd: usize = rd.into();
+                let rs1: usize = rs1.into();
+                self.regs[rd] = self.regs[rs1] << shamt;
+            }
+            Instruction::Slti { rd, rs1, imm } => {
+                let rd: usize = rd.into();
+                let rs1: usize = rs1.into();
+                self.regs[rd] = if (self.regs[rs1] as i64) < (imm as i64) {
+                    1
+                } else {
+                    0
+                };
+            }
+            Instruction::Add { rd, rs1, rs2 } => {
+                let rd: usize = rd.into();
+                let rs1: usize = rs1.into();
+                let rs2: usize = rs2.into();
                 self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]);
             }
             _ => {
-                dbg!(format!("Invalid opcode: {:#x}.", opcode));
+                dbg!(format!("Invalid opcode: {:?}.", instruction));
                 return Err(());
             }
         }

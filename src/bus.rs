@@ -17,10 +17,11 @@ impl Bus {
 
     // API for load memory
     pub fn load(&self, addr: u64, size: u64) -> Result<u64, ()> {
-        if addr >= DRAM_BASE {
-            return self.dram.load(addr, size);
+        if addr < DRAM_BASE {
+            return Err(());
         }
-        Err(())
+
+        return self.dram.load(addr, size);
     }
 
     // API for store memory
