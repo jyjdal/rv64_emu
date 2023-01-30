@@ -31,6 +31,23 @@ pub enum Instruction {
     Ebreak,
 
     Add { rd: Register, rs1: Register, rs2: Register },
+    Sub { rd: Register, rs1: Register, rs2: Register },
+    Sll { rd: Register, rs1: Register, rs2: Register },
+    Slt { rd: Register, rs1: Register, rs2: Register },
+    Sltu { rd: Register, rs1: Register, rs2: Register },
+    Xor { rd: Register, rs1: Register, rs2: Register },
+    Srl { rd: Register, rs1: Register, rs2: Register },
+    Sra { rd: Register, rs1: Register, rs2: Register },
+    Or { rd: Register, rs1: Register, rs2: Register },
+    And { rd: Register, rs1: Register, rs2: Register },
+
+    Auipc { rd: Register, imm: i32 },
+    Lui { rd: Register, imm: i32 },
+
+    Sb { rs1: Register, rs2: Register, imm: i32 },
+    Sh { rs1: Register, rs2: Register, imm: i32 },
+    Sw { rs1: Register, rs2: Register, imm: i32 },
+    Sd { rs1: Register, rs2: Register, imm: i32 },
 }
 
 // Instruction type, see specification chapter 27: RV32/64G Instruction Set Listings
@@ -53,20 +70,14 @@ pub enum InstType {
 impl InstType {
     // Decode instruction with known instruction type
     pub fn decode(&self, inst: u32) -> Instruction {
-        match self {
-            InstType::I => {
-                return InstType::decode_type_i(inst);
-            }
-            InstType::R => {
-                return InstType::decode_type_r(inst);
-            }
-            InstType::S => {
-                return Instruction::Undefined;
-            }
-            _ => {}
-        }
-
-        return Instruction::Undefined;
+        return match self {
+            InstType::I => InstType::decode_type_i(inst),
+            InstType::R => InstType::decode_type_r(inst),
+            InstType::S => InstType::decode_type_s(inst),
+            InstType::U => InstType::decode_type_u(inst),
+            InstType::B => InstType::decode_type_b(inst),
+            InstType::J => InstType::decode_type_j(inst),
+        };
     }
 
     fn decode_type_i(inst: u32) -> Instruction {
@@ -144,22 +155,93 @@ impl InstType {
 
         // Decode base type fields
         let func7 = (inst >> 25) & 0b111_1111;
-        let rs2 = (((inst >> 20) & 0b11111) as usize).into();
+        let rs2: Register = (((inst >> 20) & 0b11111) as usize).into();
         let rs1: Register = (((inst >> 15) & 0b1111_1) as usize).into();
         let func3 = (inst >> 12) & 0b111;
         let rd: Register = (((inst >> 7) & 0b1111_1) as usize).into();
 
         return match opcode {
             0b0110011 => {
-                Instruction::Add { rd, rs1, rs2 }
+                match (func3, func7) {
+                    (0b000, 0b000_0000) => Instruction::Add { rd, rs1, rs2 },
+                    (0b000, 0b010_0000) => Instruction::Sub { rd, rs1, rs2 },
+                    (0b001, 0b000_0000) => Instruction::Sll { rd, rs1, rs2 },
+                    (0b010, 0b000_0000) => Instruction::Slt { rd, rs1, rs2 },
+                    (0b011, 0b000_0000) => Instruction::Sltu { rd, rs1, rs2 },
+                    (0b100, 0b000_0000) => Instruction::Xor { rd, rs1, rs2 },
+                    (0b101, 0b000_0000) => Instruction::Srl { rd, rs1, rs2 },
+                    (0b101, 0b010_0000) => Instruction::Sra { rd, rs1, rs2 },
+                    (0b110, 0b000_0000) => Instruction::Or { rd, rs1, rs2 },
+                    (0b111, 0b000_0000) => Instruction::And { rd, rs1, rs2 },
+                    (_, _) => Instruction::Undefined
+                }
             }
             _ => Instruction::Undefined
         };
     }
 
-    fn decode_type_u(inst: u32) -> Instruction {
-        unimplemented!()
+    fn decode_type_s(inst: u32) -> Instruction {
+        // Get opcode
+        let opcode = inst & 0b1111111;
+
+        // Decode type fields
+        let imm115 = (inst >> 25) & 0b111_1111;
+        let rs2: Register = (((inst >> 20) & 0b11111) as usize).into();
+        let rs1: Register = (((inst >> 15) & 0b1111_1) as usize).into();
+        let func3 = (inst >> 12) & 0b111;
+        let imm40 = (inst >> 7) & 0b1111_1;
+
+        // Merge and sign extend the imm
+        let imm = (imm115 << 5) | imm40;
+        let imm = ((imm as i32) << 20) >> 20;
+
+        return match opcode {
+            0b0100011 => {
+                match func3 {
+                    0b000 => Instruction::Sb { rs1, rs2, imm },
+                    0b001 => Instruction::Sh { rs1, rs2, imm },
+                    0b010 => Instruction::Sw { rs1, rs2, imm },
+                    0b011 => Instruction::Sd { rs1, rs2, imm },
+                    _ => Instruction::Undefined
+                }
+            }
+            _ => Instruction::Undefined,
+        };
     }
+
+    fn decode_type_u(inst: u32) -> Instruction {
+        // Get opcode
+        let opcode = inst & 0b1111111;
+
+        // Decode type fields
+        let imm = (inst >> 12) & 0xfffff;
+        let rd: Register = (((inst >> 7) & 0b1111_1) as usize).into();
+
+        // Sign extend the immediate
+        let imm = ((imm as i32) << 12) >> 12;
+
+        return match opcode {
+            0b0010111 => Instruction::Auipc { rd, imm },
+            0b0110111 => Instruction::Lui { rd, imm },
+            _ => Instruction::Undefined
+        };
+    }
+
+    fn decode_type_b(inst: u32) -> Instruction {
+        return Instruction::Undefined;
+    }
+
+    fn decode_type_j(inst: u32) -> Instruction {
+        return Instruction::Undefined;
+    }
+}
+
+#[test]
+fn test() {
+    let inst = 0xf8a43823;
+    let decoded = decode(inst);
+    println!("Instruction {:#010x} is {:?}.\n", inst, decoded);
+    panic!("Failed")
 }
 
 // Decode a 32-bit instruction to enum Instruction
