@@ -48,6 +48,26 @@ pub enum Instruction {
     Sh { rs1: Register, rs2: Register, imm: i32 },
     Sw { rs1: Register, rs2: Register, imm: i32 },
     Sd { rs1: Register, rs2: Register, imm: i32 },
+
+    Beq { rs1: Register, rs2: Register, imm: i32 },
+    Bne { rs1: Register, rs2: Register, imm: i32 },
+    Blt { rs1: Register, rs2: Register, imm: i32 },
+    Bge { rs1: Register, rs2: Register, imm: i32 },
+    Bltu { rs1: Register, rs2: Register, imm: i32 },
+    Bgeu { rs1: Register, rs2: Register, imm: i32 },
+
+    Jal { rd: Register, imm: i32 },
+
+    Addiw { rd: Register, rs1: Register, imm: i32 },
+    Slliw { rd: Register, rs1: Register, shamt: u32 },
+    Srliw { rd: Register, rs1: Register, shamt: u32 },
+    Sraiw { rd: Register, rs1: Register, shamt: u32 },
+
+    Addw { rd: Register, rs1: Register, rs2: Register },
+    Subw { rd: Register, rs1: Register, rs2: Register },
+    Sllw { rd: Register, rs1: Register, rs2: Register },
+    Srlw { rd: Register, rs1: Register, rs2: Register },
+    Sraw { rd: Register, rs1: Register, rs2: Register },
 }
 
 // Instruction type, see specification chapter 27: RV32/64G Instruction Set Listings
@@ -145,6 +165,19 @@ impl InstType {
                     _ => Instruction::Undefined
                 }
             }
+            0b0011011 => {
+                // Extract word shift fields
+                let shamtw = (imm & 0b1_1111) as u32;
+                let shiftopw = (imm >> 5) & 0b111_1111;
+
+                match func3 {
+                    0b000 => Instruction::Addiw { rd, rs1, imm },
+                    0b001 => Instruction::Slliw { rd, rs1, shamt: shamtw },
+                    0b101 if shiftopw == 0b0000000 => Instruction::Srliw { rd, rs1, shamt: shamtw },
+                    0b101 if shiftopw == 0b0100000 => Instruction::Sraiw { rd, rs1, shamt: shamtw },
+                    _ => Instruction::Undefined
+                }
+            }
             _ => { Instruction::Undefined }
         };
     }
@@ -173,6 +206,16 @@ impl InstType {
                     (0b101, 0b010_0000) => Instruction::Sra { rd, rs1, rs2 },
                     (0b110, 0b000_0000) => Instruction::Or { rd, rs1, rs2 },
                     (0b111, 0b000_0000) => Instruction::And { rd, rs1, rs2 },
+                    (_, _) => Instruction::Undefined
+                }
+            }
+            0b0111011 => {
+                match (func3, func7) {
+                    (0b000, 0b000_0000) => Instruction::Addw { rd, rs1, rs2 },
+                    (0b000, 0b010_0000) => Instruction::Subw { rd, rs1, rs2 },
+                    (0b001, 0b000_0000) => Instruction::Sllw { rd, rs1, rs2 },
+                    (0b101, 0b000_0000) => Instruction::Srlw { rd, rs1, rs2 },
+                    (0b101, 0b010_0000) => Instruction::Sraw { rd, rs1, rs2 },
                     (_, _) => Instruction::Undefined
                 }
             }
@@ -228,17 +271,70 @@ impl InstType {
     }
 
     fn decode_type_b(inst: u32) -> Instruction {
-        return Instruction::Undefined;
+        // Get opcode
+        let opcode = inst & 0b1111111;
+
+        // Decode type fields
+        let imm12105 = (inst >> 25) & 0b111_1111;
+        let rs2: Register = (((inst >> 20) & 0b11111) as usize).into();
+        let rs1: Register = (((inst >> 15) & 0b1111_1) as usize).into();
+        let func3 = (inst >> 12) & 0b111;
+        let imm4111 = (inst >> 7) & 0b1111_1;
+
+        // Split the imm
+        let imm12 = (imm12105 & 0b100_0000) >> 6;
+        let imm105 = imm12105 & 0b011_1111;
+        let imm41 = (imm4111 & 0b1111_0) >> 1;
+        let imm11 = imm4111 & 0b0000_1;
+
+        // Merge and sign extend the imm
+        let imm = (imm12 << 12) | (imm11 << 11) | (imm105 << 5) | (imm41 << 1);
+        let imm = (imm as i32) << 19 >> 19;
+
+        return match opcode {
+            0b1100011 => {
+                match func3 {
+                    0b000 => Instruction::Beq { rs1, rs2, imm },
+                    0b001 => Instruction::Bne { rs1, rs2, imm },
+                    0b100 => Instruction::Blt { rs1, rs2, imm },
+                    0b101 => Instruction::Bge { rs1, rs2, imm },
+                    0b110 => Instruction::Bltu { rs1, rs2, imm },
+                    0b111 => Instruction::Bgeu { rs1, rs2, imm },
+                    _ => Instruction::Undefined
+                }
+            }
+            _ => Instruction::Undefined
+        };
     }
 
     fn decode_type_j(inst: u32) -> Instruction {
-        return Instruction::Undefined;
+        // Get opcode
+        let opcode = inst & 0b1111111;
+
+        // Decode type fields
+        let imm = (inst & 0xfffff_000) >> 12;
+        let rd: Register = (((inst >> 7) & 0b1111_1) as usize).into();
+
+        // 0b1111_1111_1111_1111_1111
+        let imm20 = (imm >> 19) & 0b1;
+        let imm101 = (imm >> 9) & 0b11_1111_1111;
+        let imm11 = (imm >> 8) & 0b1;
+        let imm1912 = (imm >> 0) & 0b1111_1111;
+        let imm = (imm20 << 20) | (imm1912 << 12) | (imm11 << 11) | (imm101 << 1);
+
+        // Sign extend the immediate
+        let imm = ((imm as i32) << 11) >> 11;
+
+        return match opcode {
+            0b1101111 => Instruction::Jal { rd, imm },
+            _ => Instruction::Undefined
+        };
     }
 }
 
 #[test]
 fn test() {
-    let inst = 0xf8a43823;
+    let inst = 0x0105053b;
     let decoded = decode(inst);
     println!("Instruction {:#010x} is {:?}.\n", inst, decoded);
     panic!("Failed")
@@ -284,7 +380,7 @@ const OPCODE_TYPE: [Option<InstType>; 128] = [
     /* 0b0011000 */ None,
     /* 0b0011001 */ None,
     /* 0b0011010 */ None,
-    /* 0b0011011 */ None,
+    /* 0b0011011 */ Some(InstType::I),
     /* 0b0011100 */ None,
     /* 0b0011101 */ None,
     /* 0b0011110 */ None,
@@ -316,7 +412,7 @@ const OPCODE_TYPE: [Option<InstType>; 128] = [
     /* 0b0111000 */ None,
     /* 0b0111001 */ None,
     /* 0b0111010 */ None,
-    /* 0b0111011 */ None,
+    /* 0b0111011 */ Some(InstType::R),
     /* 0b0111100 */ None,
     /* 0b0111101 */ None,
     /* 0b0111110 */ None,
