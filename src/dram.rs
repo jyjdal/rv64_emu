@@ -11,7 +11,7 @@ pub struct Dram {
 
 impl Dram {
     pub fn new(code: Vec<u8>) -> Self {
-        let mut dram = vec![0; code.len() as usize];
+        let mut dram = vec![0; DRAM_SIZE as usize];
         dram.splice(..code.len(), code.iter().cloned());
         Self { dram }
     }
