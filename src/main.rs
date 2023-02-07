@@ -16,16 +16,12 @@ use crate::cpu::*;
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
-        panic!(
-            "Usage:\n\
-            - cargo run <filename>"
-        );
+        panic!("Usage: rvemu-for-book <filename>");
     }
 
     let mut file = File::open(&args[1])?;
     let mut code = Vec::new();
     file.read_to_end(&mut code)?;
-    let len = code.clone().len() as u64;
 
     let mut cpu = Cpu::new(code);
 
@@ -49,11 +45,12 @@ fn main() -> io::Result<()> {
         }
 
         // This is a workaround for avoiding an infinite loop.
-        if (cpu.pc - DRAM_BASE) >= len {
+        if cpu.pc == 0 {
             break;
         }
     }
 
     cpu.dump_registers();
+
     Ok(())
 }
