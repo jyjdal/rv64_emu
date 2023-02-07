@@ -1,3 +1,4 @@
+use std::fmt::format;
 use crate::instruction::{decode, Instruction};
 use crate::bus::*;
 use crate::dram::*;
@@ -36,18 +37,10 @@ impl Cpu {
                 output,
                 format!(
                     "x{:02}({})={:>#18x} x{:02}({})={:>#18x} x{:02}({})={:>#18x} x{:02}({})={:>#18x}",
-                    i,
-                    abi[i],
-                    self.regs[i],
-                    i + 1,
-                    abi[i + 1],
-                    self.regs[i + 1],
-                    i + 2,
-                    abi[i + 2],
-                    self.regs[i + 2],
-                    i + 3,
-                    abi[i + 3],
-                    self.regs[i + 3],
+                    i, abi[i], self.regs[i],
+                    i + 1, abi[i + 1], self.regs[i + 1],
+                    i + 2, abi[i + 2], self.regs[i + 2],
+                    i + 3, abi[i + 3], self.regs[i + 3],
                 )
             );
         }
